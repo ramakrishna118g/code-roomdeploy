@@ -7,25 +7,21 @@
   padding: 20px 15px;
   height: 100vh;
   font-family: "Inter", sans-serif;
-
-  box-sizing: border-box;   /* prevents extra height */
+  box-sizing: border-box;
 }
 
-/* logo */
 .logo{
   font-size: 22px;
   font-weight: bold;
   margin-bottom: 30px;
 }
 
-/* nav links */
 .nav-links{
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-/* buttons */
 #sidebar button{
   padding: 12px;
   border: none;
@@ -42,7 +38,6 @@
   background: #1e293b;
 }
 
-/* logout button */
 .logout{
   margin-top: auto;
   background: #ef4444 !important;
@@ -51,5 +46,3 @@
 .logout:hover{
   background: #dc2626 !important;
 }
-
-

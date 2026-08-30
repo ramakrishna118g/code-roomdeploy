@@ -1,33 +1,32 @@
-import './homenavbar.css'
-import { useNavigate } from 'react-router-dom';
-function Sidebar(){
-  const navigate= useNavigate();
-  function goFiles(){
+import "./Sidebar.css";
+import { useNavigate } from "react-router-dom";
+
+function Sidebar() {
+  const navigate = useNavigate();
+
+  function goFiles() {
     console.log("Open Files");
   }
 
-  function goHistory(){
-    
+  function goHistory() {
+    navigate("/history");
   }
 
-  function logout(){
+  function logout() {
     localStorage.clear();
-    navigate("/login");
+    navigate("/");
   }
 
-  return(
-
+  return (
     <nav id="sidebar">
-
       <h2 className="logo">Collabin</h2>
 
       <div className="nav-links">
-
-        <button onClick={()=> navigate("/home")}>
+        <button onClick={() => navigate("/home")}>
           Collab Editor
         </button>
 
-        <button onClick={()=> navigate("/conference")}>
+        <button onClick={() => navigate("/conference")}>
           Conference
         </button>
 
@@ -38,15 +37,12 @@ function Sidebar(){
         <button onClick={goHistory}>
           History
         </button>
-
       </div>
 
       <button className="logout" onClick={logout}>
         Logout
       </button>
-
     </nav>
-
   );
 }
 

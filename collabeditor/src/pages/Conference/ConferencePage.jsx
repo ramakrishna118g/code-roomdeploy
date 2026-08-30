@@ -1,10 +1,10 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { getSocket } from "./socket.js";
-import Sidebar from "./homenavbar.jsx";
-import "./conference.css";
+import { getSocket } from "../../services/socket.js";
+import Sidebar from "../../components/Sidebar.jsx";
+import "./Conference.css";
 
-function Conference() {
+function ConferencePage() {
   const navigate = useNavigate();
   const sk = getSocket();
 
@@ -15,15 +15,14 @@ function Conference() {
   const [joinPassword, setJoinPassword] = useState("");
   const [status, setStatus] = useState("");
 
-  // ── Create room ──────────────────────────────────────────────
- function handleCreate() {
+  function handleCreate() {
     if (!password) { setStatus("Enter a password"); return; }
     setStatus("Creating...");
 
     sk.emit("create-conference", { type, password }, ({ roomId, error }) => {
       if (error) { setStatus(error || "Failed to create room"); return; }
       navigate(`/conference/${roomId}`, {
-        state: { type, password },  // ← remove isHost entirely, not needed anymore
+        state: { type, password },
       });
     });
   }
@@ -33,18 +32,16 @@ function Conference() {
     if (!joinPassword) { setStatus("Enter the password"); return; }
 
     navigate(`/conference/${joinRoomId}`, {
-      state: { type: "audio", password: joinPassword }, // type gets corrected by server
+      state: { type: "audio", password: joinPassword },
     });
   }
-  
+
   return (
     <div id="layout">
       <Sidebar />
 
       <div id="conference-container">
         <div id="conference-box">
-
-          {/* Tab toggle */}
           <div id="tab-row">
             <button
               className={tab === "create" ? "tab active" : "tab"}
@@ -60,10 +57,9 @@ function Conference() {
             </button>
           </div>
 
-          {/* ── Create form ── */}
           {tab === "create" && (
             <>
-            <b >Create New Room</b>
+              <b>Create New Room</b>
               <p>Select type</p>
               <select onChange={(e) => setType(e.target.value)} value={type}>
                 <option value="audio">Audio ☎</option>
@@ -82,7 +78,6 @@ function Conference() {
             </>
           )}
 
-          {/* ── Join form ── */}
           {tab === "join" && (
             <>
               <b>Join Room</b>
@@ -107,11 +102,10 @@ function Conference() {
           )}
 
           {status && <p id="status-msg">{status}</p>}
-
         </div>
       </div>
     </div>
   );
 }
 
-export default Conference;
+export default ConferencePage;

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useLocation, useNavigate } from "react-router-dom";
-import { getSocket } from "./socket.js";
-import Sidebar from "./homenavbar.jsx";
+import { getSocket } from "../../services/socket.js";
+import Sidebar from "../../components/Sidebar.jsx";
 import { Device } from "mediasoup-client";
-import "./conferenceroom.css";
+import "./ConferenceRoom.css";
 
-function ConferenceRoom() {
+function ConferenceRoomPage() {
   const { roomId } = useParams();
   const { state } = useLocation();
   const navigate = useNavigate();
@@ -42,7 +42,6 @@ function ConferenceRoom() {
     };
   }, []);
 
-  // ✅ FIX 3: added [] dep array — was running on every render
   useEffect(() => {
     if (localVideoRef.current && streamRef.current) {
       localVideoRef.current.srcObject = streamRef.current;
@@ -66,8 +65,6 @@ function ConferenceRoom() {
         return;
       }
 
-      // ✅ FIX 1: use a local variable instead of relying on state update
-      // setType() is async — using `type` after this would still be the old value
       const resolvedType = joinResult?.type || type;
       if (joinResult?.type) setType(joinResult.type);
 
@@ -98,9 +95,6 @@ function ConferenceRoom() {
         socket.emit("connectTransport", { dtlsParameters }, callback);
       });
 
-      // ✅ FIX 2: added errback as 3rd argument
-      // Without errback, any produce error causes the promise to hang forever
-      // which means setupRecvTransport never gets called → nobody sees video
       sendTransport.on("produce", ({ kind, rtpParameters }, callback, errback) => {
         socket.emit("produce", { kind, rtpParameters }, ({ id, error }) => {
           if (error) return errback(new Error(error));
@@ -109,7 +103,6 @@ function ConferenceRoom() {
       });
 
       console.log("Step 6: getting user media");
-      // ✅ FIX 1 applied here — use resolvedType, NOT type
       const stream = await navigator.mediaDevices.getUserMedia({
         video: resolvedType === "video",
         audio: true,
@@ -128,7 +121,6 @@ function ConferenceRoom() {
       }
       console.log("Step 8: audio producing");
 
-      // ✅ FIX 1 applied here too — use resolvedType
       if (resolvedType === "video") {
         const videoTrack = stream.getVideoTracks()[0];
         if (videoTrack) {
@@ -139,7 +131,6 @@ function ConferenceRoom() {
 
       setStatus("Connected ✓");
       await setupRecvTransport(device);
-
     } catch (err) {
       console.error(err);
       setStatus("Failed: " + err.message);
@@ -247,7 +238,6 @@ function ConferenceRoom() {
       <Sidebar />
 
       <div id="conference-container">
-
         <div id="room-bar">
           <span id="room-id">Room: <strong>{roomId}</strong></span>
           <span id="room-status" className={status.startsWith("Failed") ? "status-error" : "status-ok"}>
@@ -256,10 +246,8 @@ function ConferenceRoom() {
         </div>
 
         <div id="video-grid">
-
           {type === "video" && (
             <div className="video-tile local-tile">
-              {/* ✅ FIX 4: added playsInline — required for Safari/iOS autoplay */}
               <video ref={localVideoRef} autoPlay muted playsInline id="local-video" />
               <span className="video-label">You {camOff ? "📵" : "🟢"}</span>
             </div>
@@ -280,7 +268,6 @@ function ConferenceRoom() {
               <p>{remoteAudios.length} participant(s) connected</p>
             </div>
           )}
-
         </div>
 
         <div id="controls">
@@ -298,7 +285,6 @@ function ConferenceRoom() {
             🚪 Leave
           </button>
         </div>
-
       </div>
     </div>
   );
@@ -312,7 +298,6 @@ function RemoteVideo({ id, stream }) {
 
   return (
     <div className="video-tile">
-      {/* ✅ FIX 4: added playsInline */}
       <video ref={ref} autoPlay playsInline id={`remote-video-${id}`} />
       <span className="video-label">Participant 🔵</span>
     </div>
@@ -328,4 +313,4 @@ function RemoteAudio({ id, stream }) {
   return <audio ref={ref} autoPlay id={`audio-${id}`} style={{ display: "none" }} />;
 }
 
-export default ConferenceRoom;
+export default ConferenceRoomPage;
