@@ -85,6 +85,7 @@ router.post("/google-login", async (req, res) => {
     } else if (!user.googleId) {
       user.googleId = googleId;
       if (picture) user.picture = picture;
+      if (!user.originalname) user.originalname = name || user.username;
       await user.save();
     }
 

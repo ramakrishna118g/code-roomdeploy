@@ -13,7 +13,10 @@ const userSchema = new mongoose.Schema({
   },
   originalname: {
     type: String,
-    required: true,
+    required: false,
+    default: function () {
+      return this.username;
+    },
   },
   email: {
     type: String,
