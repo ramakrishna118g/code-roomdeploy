@@ -1,0 +1,98 @@
+# Stage 1: Build
+FROM maven:3.9-eclipse-temurin-17 AS build
+
+WORKDIR /app
+
+COPY pom.xml .
+COPY src ./src
+
+RUN mvn clean package
+
+# Stage 2: Run
+FROM tomcat:9-jdk17
+
+COPY --from=build /app/target/AI-OLMS.war /usr/local/tomcat/webapps/
+
+EXPOSE 8080
+
+
+
+Image commands
+
+docker build -t myapp:latest . – Build image myapp:latest from Dockerfile in current dir
+docker images – List all local images (would show myapp:latest)
+docker pull myapp:latest – Download myapp:latest from a registry
+docker push myapp:latest – Upload myapp:latest to a registry
+docker rmi myapp:latest – Remove the myapp:latest image
+docker tag myapp:latest myapp:v1 – Alias myapp:latest as myapp:v1
+docker history myapp:latest – Show layer history of myapp:latest
+docker save -o myapp.tar myapp:latest – Save myapp:latest to myapp.tar
+docker load -i myapp.tar – Load image from myapp.tar
+
+Container lifecycle
+
+docker run -d --name myapp_container myapp:latest – Create & start container myapp_container (ID a1b2c3d4e5f6) from myapp:latest
+docker start a1b2c3d4e5f6 – Start the stopped container
+docker stop a1b2c3d4e5f6 – Gracefully stop it
+docker restart a1b2c3d4e5f6 – Restart it
+docker pause a1b2c3d4e5f6 – Pause its processes
+docker unpause a1b2c3d4e5f6 – Unpause it
+docker kill a1b2c3d4e5f6 – Force-stop it
+docker rm a1b2c3d4e5f6 – Remove it
+docker create --name myapp_container myapp:latest – Create it without starting
+
+Inspecting/interacting
+
+docker ps -a – List containers, including a1b2c3d4e5f6
+docker logs a1b2c3d4e5f6 – View its logs
+docker exec -it a1b2c3d4e5f6 bash – Open a bash shell inside it
+docker attach a1b2c3d4e5f6 – Attach terminal to its main process
+docker inspect a1b2c3d4e5f6 – Show detailed JSON info
+docker top a1b2c3d4e5f6 – Show its running processes
+docker stats a1b2c3d4e5f6 – Show live resource usage
+docker diff a1b2c3d4e5f6 – Show changed files in its filesystem
+docker cp a1b2c3d4e5f6:/app/log.txt ./log.txt – Copy a file out of it
+docker port a1b2c3d4e5f6 – Show its port mappings
+
+Networking
+
+docker network ls – List networks
+docker network create mynet – Create network mynet
+docker network inspect mynet – Show details of mynet
+docker network connect mynet a1b2c3d4e5f6 – Connect the container to mynet
+docker network disconnect mynet a1b2c3d4e5f6 – Disconnect it from mynet
+docker network rm mynet – Remove mynet
+
+Volumes
+
+docker volume create myvol – Create volume myvol
+docker volume ls – List volumes
+docker volume inspect myvol – Show details of myvol
+docker run -d -v myvol:/data --name myapp_container myapp:latest – Run container mounting myvol
+docker volume rm myvol – Remove myvol
+docker volume prune – Remove all unused volumes
+
+System/cleanup
+
+docker system df – Show disk usage
+docker system prune – Remove unused containers/networks/images
+docker container prune – Remove stopped containers
+docker image prune – Remove dangling images
+docker info – Show system info
+docker version – Show version info
+
+Compose (if myapp were defined in a docker-compose.yml)
+
+docker compose up -d – Start all services (would create a1b2c3d4e5f6 for the myapp service)
+docker compose logs myapp – View logs for the myapp service
+docker compose down – Stop and remove everything Compose created
+
+
+
+docker login – Log in to Docker Hub interactively (prompts for username/password)
+docker login -u myusername – Log in to Docker Hub as myusername (prompts for password only)
+docker login myregistry.example.com – Log in to a private/custom registry at myregistry.example.com
+docker login -u myusername -p mypassword myregistry.example.com – Log in to a specific registry with credentials passed inline (not recommended — visible in shell history)
+echo $TOKEN | docker login -u myusername --password-stdin – Log in using a token/password piped via stdin (safer, avoids exposing password in process list)
+docker logout – Log out of Docker Hub
+docker logout myregistry.example.com – Log out of the specific private registry
