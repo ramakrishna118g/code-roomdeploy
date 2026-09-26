@@ -6,7 +6,6 @@ import * as dotenv from "dotenv";
 import { connectDB } from "./config/db.js";
 import authRoutes from "./routes/authRoutes.js";
 import aiRoutes from "./routes/aiRoutes.js";
-import { initMediasoup } from "./services/mediasoupService.js";
 import { setupYjsWebSocket } from "./services/yjsService.js";
 import { setupSocketIO } from "./services/socketService.js";
 
@@ -33,7 +32,6 @@ app.use("/", authRoutes);
 app.use("/", aiRoutes);
 
 // ── Initialize Services ──────────────────────────────────────────────────────
-await initMediasoup();
 setupYjsWebSocket(server);
 setupSocketIO(server);
 
