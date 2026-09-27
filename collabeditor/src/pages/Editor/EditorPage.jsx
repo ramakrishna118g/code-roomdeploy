@@ -69,11 +69,19 @@ function EditorPage() {
     let ydoc;
     let provider;
 
+function getWsUrl() {
+  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
+  if (import.meta.env.VITE_BACKEND_URL) {
+    return import.meta.env.VITE_BACKEND_URL.replace(/^http/, "ws");
+  }
+  return "ws://localhost:1234";
+}
+
     try {
       ydoc = new Y.Doc();
       const ytext = ydoc.getText("monaco");
       provider = new WebsocketProvider(
-        `${import.meta.env.VITE_WS_URL || "ws://localhost:1234"}/yjs`,
+        `${getWsUrl()}/yjs`,
         roomId,
         ydoc
       );
