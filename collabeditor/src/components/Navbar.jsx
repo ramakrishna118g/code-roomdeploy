@@ -2,19 +2,26 @@ import { useState } from "react";
 import logo from "../assets/logo.png";
 import "../pages/Editor/Editor.css";
 
+const EXT_MAP = {
+  javascript: ".js",
+  python: ".py",
+  java: ".java",
+  cpp: ".cpp",
+  typescript: ".ts",
+};
+
 function Navbar({
   lan,
   setlan,
   roomId,
-  fileName,
-  onFileNameChange,
+  baseFileName,
+  onBaseFileNameChange,
   onSave,
   onRun,
   isRunning,
   userName,
   onNameChange,
-  onReview,
-  isReviewing,
+  onAiChat,
 }) {
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState("");
@@ -23,6 +30,9 @@ function Navbar({
   const [fileDraft, setFileDraft] = useState("");
 
   const [copied, setCopied] = useState(false);
+
+  const currentExt = EXT_MAP[lan] || ".txt";
+  const displayFileName = `${baseFileName || "main"}${currentExt}`;
 
   function startNameEdit() {
     setNameDraft(userName);
@@ -38,14 +48,15 @@ function Navbar({
   }
 
   function startFileEdit() {
-    setFileDraft(fileName || "main.txt");
+    setFileDraft(baseFileName || "main");
     setEditingFile(true);
   }
 
   function commitFileEdit() {
-    const trimmed = fileDraft.trim();
-    if (trimmed && trimmed !== fileName) {
-      onFileNameChange(trimmed);
+    // Strip extension if user typed one in the edit input
+    const cleanName = fileDraft.trim().replace(/\.[^/.]+$/, "");
+    if (cleanName && cleanName !== baseFileName) {
+      onBaseFileNameChange(cleanName);
     }
     setEditingFile(false);
   }
@@ -79,29 +90,32 @@ function Navbar({
 
       {/* CENTER */}
       <div className="nav-center" style={{ display: "flex", gap: "16px", alignItems: "center" }}>
-        {/* Editable File Name Badge */}
+        {/* Editable Base File Name Badge */}
         {editingFile ? (
-          <input
-            className="name-input"
-            value={fileDraft}
-            autoFocus
-            maxLength={35}
-            onChange={(e) => setFileDraft(e.target.value)}
-            onBlur={commitFileEdit}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") commitFileEdit();
-              if (e.key === "Escape") setEditingFile(false);
-            }}
-            style={{ width: "140px" }}
-          />
+          <div style={{ display: "flex", alignItems: "center" }}>
+            <input
+              className="name-input"
+              value={fileDraft}
+              autoFocus
+              maxLength={30}
+              onChange={(e) => setFileDraft(e.target.value)}
+              onBlur={commitFileEdit}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") commitFileEdit();
+                if (e.key === "Escape") setEditingFile(false);
+              }}
+              style={{ width: "120px" }}
+            />
+            <span style={{ color: "#9ca3af", fontSize: "13px", marginLeft: "2px" }}>{currentExt}</span>
+          </div>
         ) : (
           <span
             className="room-id"
             onClick={startFileEdit}
-            title="Click to rename file"
+            title="Click to rename file / class"
             style={{ cursor: "pointer", color: "#60a5fa", fontWeight: 600 }}
           >
-            📄 {fileName || "main.txt"} ✏️
+            📄 {displayFileName} ✏️
           </span>
         )}
 
@@ -138,13 +152,13 @@ function Navbar({
           </button>
         )}
 
-        <button className="btn ai" onClick={onReview} disabled={isReviewing}>
-          {isReviewing ? "Reviewing..." : "✦ AI Review"}
+        <button className="btn ai" onClick={onAiChat}>
+          ✦ AI Chat
         </button>
         <button className="btn run" onClick={onRun} disabled={isRunning}>
           {isRunning ? "Running..." : "Run ▶"}
         </button>
-        <button className="btn store" onClick={onSave} title={`Download ${fileName || "file"}`}>
+        <button className="btn store" onClick={onSave} title={`Download ${displayFileName}`}>
           Save
         </button>
       </div>

@@ -4,12 +4,12 @@ import "./Dashboard.css";
 import { useNavigate } from "react-router-dom";
 import { getSocket } from "../../services/socket.js";
 
-const DEFAULT_FILENAMES = {
-  javascript: "index.js",
-  java: "Main.java",
-  python: "main.py",
-  cpp: "main.cpp",
-  typescript: "index.ts",
+const DEFAULT_BASE_FILENAMES = {
+  javascript: "index",
+  java: "Main",
+  python: "main",
+  cpp: "main",
+  typescript: "index",
 };
 
 function DashboardPage() {
@@ -18,7 +18,7 @@ function DashboardPage() {
   const [iscreate, setiscreate] = useState(false);
   const [isjoin, setisjoin] = useState(false);
   const [languagetype, setlanguagetype] = useState("javascript");
-  const [filename, setfilename] = useState("index.js");
+  const [baseFileName, setBaseFileName] = useState("index");
   const [conferencetype, setconferencetype] = useState("editor");
   const [pass, setpass] = useState("12345678");
   const [enpass, setenpass] = useState("12345678@");
@@ -49,7 +49,7 @@ function DashboardPage() {
 
   function handleLanguageChange(lang) {
     setlanguagetype(lang);
-    setfilename(DEFAULT_FILENAMES[lang] || "file.txt");
+    setBaseFileName(DEFAULT_BASE_FILENAMES[lang] || "main");
   }
 
   function createroomapifunc() {
@@ -59,6 +59,9 @@ function DashboardPage() {
     }
 
     localStorage.setItem("cr_username", username.trim());
+
+    // Clean extension if user typed one in base name input
+    const cleanBaseName = baseFileName.trim().replace(/\.[^/.]+$/, "") || DEFAULT_BASE_FILENAMES[languagetype] || "main";
 
     socket.emit("create-room", {
       password: pass,
@@ -71,7 +74,7 @@ function DashboardPage() {
         state: {
           roomId: roomId,
           language: languagetype,
-          fileName: filename.trim() || DEFAULT_FILENAMES[languagetype] || "file.txt",
+          baseFileName: cleanBaseName,
           conference: conferencetype,
           userName: username.trim(),
         },
@@ -150,11 +153,11 @@ function DashboardPage() {
             <option value="cpp">C++</option>
           </select>
 
-          <label style={{ marginTop: "12px", display: "block" }}>Custom File Name / Class Name:</label>
+          <label style={{ marginTop: "12px", display: "block" }}>File / Class Base Name (without extension):</label>
           <input
-            placeholder="e.g. Main.java, Calculator.java, app.js"
-            value={filename}
-            onChange={(e) => setfilename(e.target.value)}
+            placeholder="e.g. Main, Calculator, App"
+            value={baseFileName}
+            onChange={(e) => setBaseFileName(e.target.value)}
           />
 
           <h3>Conference type:</h3>

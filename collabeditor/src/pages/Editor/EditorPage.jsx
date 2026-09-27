@@ -20,12 +20,20 @@ const JUDGE0_LANG_MAP = {
   typescript: 74,
 };
 
-const DEFAULT_FILENAMES = {
-  javascript: "index.js",
-  java: "Main.java",
-  python: "main.py",
-  cpp: "main.cpp",
-  typescript: "index.ts",
+const DEFAULT_BASE_FILENAMES = {
+  javascript: "index",
+  java: "Main",
+  python: "main",
+  cpp: "main",
+  typescript: "index",
+};
+
+const EXT_MAP = {
+  javascript: ".js",
+  python: ".py",
+  java: ".java",
+  cpp: ".cpp",
+  typescript: ".ts",
 };
 
 function EditorPage() {
@@ -34,10 +42,10 @@ function EditorPage() {
 
   const roomId = location.state?.roomId || null;
   const languageFromRoute = location.state?.language || "javascript";
-  const fileNameFromRoute = location.state?.fileName || DEFAULT_FILENAMES[languageFromRoute] || "main.txt";
+  const baseFileNameFromRoute = location.state?.baseFileName || DEFAULT_BASE_FILENAMES[languageFromRoute] || "main";
 
   const [lan, setlan] = useState(languageFromRoute);
-  const [fileName, setFileName] = useState(fileNameFromRoute);
+  const [baseFileName, setBaseFileName] = useState(baseFileNameFromRoute);
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
@@ -49,10 +57,8 @@ function EditorPage() {
   // AI Chat Assistant States
   const [chatMessages, setChatMessages] = useState([]);
   const [chatInput, setChatInput] = useState("");
-  const [isReviewing, setIsReviewing] = useState(false);
   const [isChatSending, setIsChatSending] = useState(false);
-  const [showReviewPanel, setShowReviewPanel] = useState(false);
-  const [reviewError, setReviewError] = useState("");
+  const [showChatPanel, setShowChatPanel] = useState(false);
 
   const ydocRef = useRef(null);
   const providerRef = useRef(null);
@@ -107,18 +113,32 @@ function EditorPage() {
         ydoc
       );
 
-      // Yjs Room Metadata Sync (filename)
+      // Yjs Room Metadata Sync (language & baseFileName)
       const metaMap = ydoc.getMap("room-metadata");
-      if (fileNameFromRoute && !metaMap.get("fileName")) {
-        metaMap.set("fileName", fileNameFromRoute);
-      } else if (metaMap.get("fileName")) {
-        setFileName(metaMap.get("fileName"));
+
+      if (languageFromRoute && !metaMap.get("language")) {
+        metaMap.set("language", languageFromRoute);
+      } else if (metaMap.get("language")) {
+        const syncedLang = metaMap.get("language");
+        setlan(syncedLang);
+        updateMonacoLanguage(syncedLang);
+      }
+
+      if (baseFileNameFromRoute && !metaMap.get("baseFileName")) {
+        metaMap.set("baseFileName", baseFileNameFromRoute);
+      } else if (metaMap.get("baseFileName")) {
+        setBaseFileName(metaMap.get("baseFileName"));
       }
 
       metaMap.observe(() => {
-        const syncedFileName = metaMap.get("fileName");
-        if (syncedFileName) {
-          setFileName(syncedFileName);
+        const syncedLang = metaMap.get("language");
+        if (syncedLang) {
+          setlan(syncedLang);
+          updateMonacoLanguage(syncedLang);
+        }
+        const syncedBaseName = metaMap.get("baseFileName");
+        if (syncedBaseName) {
+          setBaseFileName(syncedBaseName);
         }
       });
 
@@ -160,9 +180,23 @@ function EditorPage() {
     };
   }, [roomId]);
 
+  function updateMonacoLanguage(newLang) {
+    if (editorRef.current && monacoRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        monacoRef.current.editor.setModelLanguage(model, newLang);
+      }
+    }
+  }
+
   function handleMount(editor, monaco) {
     editorRef.current = editor;
     monacoRef.current = monaco;
+
+    const model = editor.getModel();
+    if (model) {
+      monaco.editor.setModelLanguage(model, lan);
+    }
 
     if (ytextRef.current && providerRef.current) {
       bindingRef.current = new MonacoBinding(
@@ -239,24 +273,21 @@ function EditorPage() {
 
   function changeLanguage(newLang) {
     setlan(newLang);
-    const newDefaultFile = DEFAULT_FILENAMES[newLang] || "file.txt";
-    handleFileNameChange(newDefaultFile);
+    updateMonacoLanguage(newLang);
 
-    if (editorRef.current && monacoRef.current) {
-      const model = editorRef.current.getModel();
-      if (model) {
-        monacoRef.current.editor.setModelLanguage(model, newLang);
-      }
+    if (ydocRef.current) {
+      const metaMap = ydocRef.current.getMap("room-metadata");
+      metaMap.set("language", newLang);
     }
   }
 
-  function handleFileNameChange(newFileName) {
-    const trimmed = newFileName.trim();
-    if (!trimmed) return;
-    setFileName(trimmed);
+  function handleBaseFileNameChange(newBaseName) {
+    const cleanBaseName = newBaseName.trim().replace(/\.[^/.]+$/, "");
+    if (!cleanBaseName) return;
+    setBaseFileName(cleanBaseName);
     if (ydocRef.current) {
       const metaMap = ydocRef.current.getMap("room-metadata");
-      metaMap.set("fileName", trimmed);
+      metaMap.set("baseFileName", cleanBaseName);
     }
   }
 
@@ -326,52 +357,28 @@ function EditorPage() {
     }
   }
 
-  async function reviewCode() {
-    if (!editorRef.current) return;
-
-    const code = editorRef.current.getValue();
-
-    if (!code.trim()) {
-      setReviewError("Editor is empty — nothing to review.");
-      setShowReviewPanel(true);
-      return;
-    }
-
-    setIsReviewing(true);
-    setShowReviewPanel(true);
-    setReviewError("");
-
-    try {
-      const res = await fetch(
-        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:1234"}/api/review`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ code, language: lan }),
-        }
-      );
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        setReviewError(data.error || "Failed to get review.");
-        return;
+  function toggleAiChat() {
+    setShowChatPanel((prev) => {
+      const nextState = !prev;
+      if (nextState && chatMessages.length === 0) {
+        setChatMessages([
+          {
+            id: 1,
+            role: "assistant",
+            text: "Hi there! 👋 Welcome to CodeRoom AI Chat.\n\nI'm your coding assistant. Ask me questions, request a code review, or ask how to fix errors!",
+          },
+        ]);
       }
-
-      setChatMessages([{ id: Date.now(), role: "assistant", text: data.review }]);
-    } catch (err) {
-      setReviewError("Network error: " + err.message);
-    } finally {
-      setIsReviewing(false);
-    }
+      return nextState;
+    });
   }
 
-  async function handleSendChat() {
-    if (!chatInput.trim() || isChatSending) return;
-    const userMsg = chatInput.trim();
-    setChatInput("");
+  async function handleSendChat(customText = null) {
+    const textToSend = customText || chatInput.trim();
+    if (!textToSend || isChatSending) return;
+    if (!customText) setChatInput("");
 
-    const newMessages = [...chatMessages, { id: Date.now(), role: "user", text: userMsg }];
+    const newMessages = [...chatMessages, { id: Date.now(), role: "user", text: textToSend }];
     setChatMessages(newMessages);
     setIsChatSending(true);
 
@@ -411,7 +418,8 @@ function EditorPage() {
   }
 
   function saveFile(code) {
-    const downloadName = fileName || `code.${lan}`;
+    const ext = EXT_MAP[lan] || ".txt";
+    const downloadName = `${baseFileName || "main"}${ext}`;
     const blob = new Blob([code], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -425,16 +433,15 @@ function EditorPage() {
       <Navbar
         lan={lan}
         setlan={changeLanguage}
-        fileName={fileName}
-        onFileNameChange={handleFileNameChange}
+        baseFileName={baseFileName}
+        onBaseFileNameChange={handleBaseFileNameChange}
         onRun={runCode}
         isRunning={isRunning}
         roomId={roomId}
         userName={userName}
         onNameChange={handleUserNameChange}
         onSave={() => saveFile(editorRef.current?.getValue() || "")}
-        onReview={reviewCode}
-        isReviewing={isReviewing}
+        onAiChat={toggleAiChat}
       />
 
       {yjsStatus === "error" && (
@@ -489,21 +496,15 @@ function EditorPage() {
         </div>
 
         {/* AI Assistant Chat Drawer */}
-        {showReviewPanel && (
+        {showChatPanel && (
           <div style={styles.reviewPanel}>
             <div style={styles.reviewHeader}>
-              <span>✦ AI Assistant & Code Review</span>
-              <button onClick={() => setShowReviewPanel(false)} style={styles.closeBtn}>✕</button>
+              <span>✦ CodeRoom AI Chat</span>
+              <button onClick={() => setShowChatPanel(false)} style={styles.closeBtn}>✕</button>
             </div>
 
             <div style={styles.chatBody}>
-              {isReviewing && <div style={styles.reviewLoading}>✦ Analyzing your code...</div>}
-
-              {!isReviewing && reviewError && (
-                <div style={styles.reviewErrorText}>{reviewError}</div>
-              )}
-
-              {!isReviewing && chatMessages.map((msg) => (
+              {chatMessages.map((msg) => (
                 <div
                   key={msg.id}
                   style={msg.role === "user" ? styles.userBubbleContainer : styles.aiBubbleContainer}
@@ -527,16 +528,34 @@ function EditorPage() {
               <div ref={chatBottomRef} />
             </div>
 
+            {/* Quick Action Suggestion Chips */}
+            <div style={styles.quickChipsRow}>
+              <button
+                style={styles.chipBtn}
+                onClick={() => handleSendChat("Please do a clean, structured code review of my code.")}
+                disabled={isChatSending}
+              >
+                🔍 Review My Code
+              </button>
+              <button
+                style={styles.chipBtn}
+                onClick={() => handleSendChat("Are there any bugs, resource leaks, or edge cases in this code?")}
+                disabled={isChatSending}
+              >
+                🐛 Find Bugs
+              </button>
+            </div>
+
             <div style={styles.chatInputContainer}>
               <input
                 type="text"
                 value={chatInput}
                 onChange={(e) => setChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
-                placeholder="Ask follow-up question or request changes..."
+                placeholder="Ask CodeRoom AI anything about your code..."
                 style={styles.chatInput}
               />
-              <button onClick={handleSendChat} disabled={isChatSending} style={styles.sendBtn}>
+              <button onClick={() => handleSendChat()} disabled={isChatSending} style={styles.sendBtn}>
                 Send
               </button>
             </div>
@@ -686,6 +705,23 @@ const styles = {
     fontFamily: "'JetBrains Mono', monospace",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
+  },
+  quickChipsRow: {
+    display: "flex",
+    gap: "8px",
+    padding: "8px 12px",
+    backgroundColor: "#0a0a0a",
+    borderTop: "1px solid #27272a",
+  },
+  chipBtn: {
+    backgroundColor: "#27272a",
+    color: "#d4d4d8",
+    border: "1px solid #3f3f46",
+    borderRadius: "16px",
+    padding: "4px 12px",
+    fontSize: "12px",
+    cursor: "pointer",
+    fontWeight: "500",
   },
   chatInputContainer: {
     display: "flex",
