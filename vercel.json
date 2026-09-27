@@ -1,6 +1,4 @@
 {
-  "buildCommand": "cd collabeditor && npm install && npm run build",
-  "outputDirectory": "collabeditor/dist",
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ]
