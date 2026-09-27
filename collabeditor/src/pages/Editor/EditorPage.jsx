@@ -70,11 +70,14 @@ function EditorPage() {
     let provider;
 
 function getWsUrl() {
-  if (import.meta.env.VITE_WS_URL) return import.meta.env.VITE_WS_URL;
-  if (import.meta.env.VITE_BACKEND_URL) {
-    return import.meta.env.VITE_BACKEND_URL.replace(/^http/, "ws");
+  let url = import.meta.env.VITE_WS_URL || import.meta.env.VITE_BACKEND_URL || "ws://localhost:1234";
+  url = url.trim().replace(/\/+$/, "");
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
+    url = url.replace(/^http:\/\//i, "wss://").replace(/^https:\/\//i, "wss://").replace(/^ws:\/\//i, "wss://");
+  } else {
+    url = url.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://");
   }
-  return "ws://localhost:1234";
+  return url;
 }
 
     try {
