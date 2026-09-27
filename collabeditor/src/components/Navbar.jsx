@@ -2,26 +2,59 @@ import { useState } from "react";
 import logo from "../assets/logo.png";
 import "../pages/Editor/Editor.css";
 
-function Navbar({ lan, setlan, roomId, onSave, onRun, isRunning, userName, onNameChange, onReview, isReviewing }) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
+function Navbar({
+  lan,
+  setlan,
+  roomId,
+  fileName,
+  onFileNameChange,
+  onSave,
+  onRun,
+  isRunning,
+  userName,
+  onNameChange,
+  onReview,
+  isReviewing,
+}) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
 
-  function startEdit() {
-    setDraft(userName);
-    setEditing(true);
+  const [editingFile, setEditingFile] = useState(false);
+  const [fileDraft, setFileDraft] = useState("");
+
+  const [copied, setCopied] = useState(false);
+
+  function startNameEdit() {
+    setNameDraft(userName);
+    setEditingName(true);
   }
 
-  function commitEdit() {
-    const trimmed = draft.trim();
+  function commitNameEdit() {
+    const trimmed = nameDraft.trim();
     if (trimmed && trimmed !== userName) {
       onNameChange(trimmed);
     }
-    setEditing(false);
+    setEditingName(false);
   }
 
-  function handleKeyDown(e) {
-    if (e.key === "Enter") commitEdit();
-    if (e.key === "Escape") setEditing(false);
+  function startFileEdit() {
+    setFileDraft(fileName || "main.txt");
+    setEditingFile(true);
+  }
+
+  function commitFileEdit() {
+    const trimmed = fileDraft.trim();
+    if (trimmed && trimmed !== fileName) {
+      onFileNameChange(trimmed);
+    }
+    setEditingFile(false);
+  }
+
+  function handleCopyRoomId() {
+    if (!roomId) return;
+    navigator.clipboard.writeText(roomId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -45,25 +78,62 @@ function Navbar({ lan, setlan, roomId, onSave, onRun, isRunning, userName, onNam
       </div>
 
       {/* CENTER */}
-      <div className="nav-center">
-        <span className="room-id">Room: {roomId}</span>
+      <div className="nav-center" style={{ display: "flex", gap: "16px", alignItems: "center" }}>
+        {/* Editable File Name Badge */}
+        {editingFile ? (
+          <input
+            className="name-input"
+            value={fileDraft}
+            autoFocus
+            maxLength={35}
+            onChange={(e) => setFileDraft(e.target.value)}
+            onBlur={commitFileEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitFileEdit();
+              if (e.key === "Escape") setEditingFile(false);
+            }}
+            style={{ width: "140px" }}
+          />
+        ) : (
+          <span
+            className="room-id"
+            onClick={startFileEdit}
+            title="Click to rename file"
+            style={{ cursor: "pointer", color: "#60a5fa", fontWeight: 600 }}
+          >
+            📄 {fileName || "main.txt"} ✏️
+          </span>
+        )}
+
+        {/* Copyable Room ID Badge */}
+        <span
+          className="room-id"
+          onClick={handleCopyRoomId}
+          title="Click to copy Room ID"
+          style={{ cursor: "pointer", userSelect: "none" }}
+        >
+          Room: <strong>{roomId}</strong> {copied ? "✅ Copied!" : "📋"}
+        </span>
       </div>
 
       {/* RIGHT */}
       <div className="nav-right">
         {/* Editable name badge */}
-        {editing ? (
+        {editingName ? (
           <input
             className="name-input"
-            value={draft}
+            value={nameDraft}
             autoFocus
             maxLength={20}
-            onChange={(e) => setDraft(e.target.value)}
-            onBlur={commitEdit}
-            onKeyDown={handleKeyDown}
+            onChange={(e) => setNameDraft(e.target.value)}
+            onBlur={commitNameEdit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitNameEdit();
+              if (e.key === "Escape") setEditingName(false);
+            }}
           />
         ) : (
-          <button className="btn people" onClick={startEdit} title="Click to change your name">
+          <button className="btn people" onClick={startNameEdit} title="Click to change your name">
             👤 {userName}
           </button>
         )}
@@ -74,7 +144,9 @@ function Navbar({ lan, setlan, roomId, onSave, onRun, isRunning, userName, onNam
         <button className="btn run" onClick={onRun} disabled={isRunning}>
           {isRunning ? "Running..." : "Run ▶"}
         </button>
-        <button className="btn store" onClick={onSave}>Save</button>
+        <button className="btn store" onClick={onSave} title={`Download ${fileName || "file"}`}>
+          Save
+        </button>
       </div>
     </div>
   );

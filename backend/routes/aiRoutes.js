@@ -11,7 +11,7 @@ router.post("/api/review", async (req, res) => {
   }
 
   const prompt = `You are a senior software engineer doing a code review.
-Review the following ${language || "code"} snippet. Be specific and concise.
+Review the following ${language || "code"} snippet. Be specific, structured, friendly, and concise.
 
 Cover, in this order:
 1. Bugs or correctness issues (if any)
@@ -44,6 +44,47 @@ ${code}
   }
 
   res.status(503).json({ error: "Gemini is currently overloaded on all models. Please try again shortly." });
+});
+
+router.post("/api/chat", async (req, res) => {
+  const { messages, code, language } = req.body;
+
+  if (!messages || !Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "No chat messages provided." });
+  }
+
+  const systemInstruction = `You are CodeRoom AI, a friendly expert coding assistant.
+The user is working on the following ${language || "code"} in their editor:
+\`\`\`${language || ""}
+${code || ""}
+\`\`\`
+Help them answer questions, fix bugs, optimize performance, or explain concepts concisely.`;
+
+  const contents = messages.map((m) => ({
+    role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+    parts: [{ text: m.text }],
+  }));
+
+  const modelsToTry = ["gemini-3.5-flash", "gemini-2.5-flash"];
+
+  for (const model of modelsToTry) {
+    try {
+      const response = await generateWithRetry(genAI, {
+        model,
+        contents,
+        config: { systemInstruction },
+      });
+      const replyText = response.text || "No response from Gemini.";
+      return res.json({ reply: replyText, modelUsed: model });
+    } catch (err) {
+      console.error(`Gemini chat error on ${model}:`, err);
+      if (err?.status !== 503) {
+        return res.status(500).json({ error: "Failed to generate AI chat response." });
+      }
+    }
+  }
+
+  res.status(503).json({ error: "Gemini is currently overloaded. Please try again shortly." });
 });
 
 export default router;

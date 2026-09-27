@@ -4,12 +4,21 @@ import "./Dashboard.css";
 import { useNavigate } from "react-router-dom";
 import { getSocket } from "../../services/socket.js";
 
+const DEFAULT_FILENAMES = {
+  javascript: "index.js",
+  java: "Main.java",
+  python: "main.py",
+  cpp: "main.cpp",
+  typescript: "index.ts",
+};
+
 function DashboardPage() {
   const socket = getSocket();
   const [isVisible, setIsVisible] = useState(true);
   const [iscreate, setiscreate] = useState(false);
   const [isjoin, setisjoin] = useState(false);
   const [languagetype, setlanguagetype] = useState("javascript");
+  const [filename, setfilename] = useState("index.js");
   const [conferencetype, setconferencetype] = useState("editor");
   const [pass, setpass] = useState("12345678");
   const [enpass, setenpass] = useState("12345678@");
@@ -38,6 +47,11 @@ function DashboardPage() {
     setIsVisible(true);
   }
 
+  function handleLanguageChange(lang) {
+    setlanguagetype(lang);
+    setfilename(DEFAULT_FILENAMES[lang] || "file.txt");
+  }
+
   function createroomapifunc() {
     if (!username.trim()) {
       alert("Please enter your name before creating a room.");
@@ -57,6 +71,7 @@ function DashboardPage() {
         state: {
           roomId: roomId,
           language: languagetype,
+          fileName: filename.trim() || DEFAULT_FILENAMES[languagetype] || "file.txt",
           conference: conferencetype,
           userName: username.trim(),
         },
@@ -127,13 +142,20 @@ function DashboardPage() {
           <h3>Select language:</h3>
           <select
             value={languagetype}
-            onChange={(e) => setlanguagetype(e.target.value)}
+            onChange={(e) => handleLanguageChange(e.target.value)}
           >
             <option value="javascript">JavaScript</option>
             <option value="java">Java</option>
             <option value="python">Python</option>
             <option value="cpp">C++</option>
           </select>
+
+          <label style={{ marginTop: "12px", display: "block" }}>Custom File Name / Class Name:</label>
+          <input
+            placeholder="e.g. Main.java, Calculator.java, app.js"
+            value={filename}
+            onChange={(e) => setfilename(e.target.value)}
+          />
 
           <h3>Conference type:</h3>
           <select

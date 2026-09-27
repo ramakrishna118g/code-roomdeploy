@@ -20,14 +20,24 @@ const JUDGE0_LANG_MAP = {
   typescript: 74,
 };
 
+const DEFAULT_FILENAMES = {
+  javascript: "index.js",
+  java: "Main.java",
+  python: "main.py",
+  cpp: "main.cpp",
+  typescript: "index.ts",
+};
+
 function EditorPage() {
   const location = useLocation();
   const navigate = useNavigate();
 
   const roomId = location.state?.roomId || null;
   const languageFromRoute = location.state?.language || "javascript";
+  const fileNameFromRoute = location.state?.fileName || DEFAULT_FILENAMES[languageFromRoute] || "main.txt";
 
   const [lan, setlan] = useState(languageFromRoute);
+  const [fileName, setFileName] = useState(fileNameFromRoute);
   const [output, setOutput] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [showOutput, setShowOutput] = useState(false);
@@ -36,8 +46,11 @@ function EditorPage() {
     location.state?.userName || localStorage.getItem("cr_username") || "User"
   );
 
-  const [aiReview, setAiReview] = useState("");
+  // AI Chat Assistant States
+  const [chatMessages, setChatMessages] = useState([]);
+  const [chatInput, setChatInput] = useState("");
   const [isReviewing, setIsReviewing] = useState(false);
+  const [isChatSending, setIsChatSending] = useState(false);
   const [showReviewPanel, setShowReviewPanel] = useState(false);
   const [reviewError, setReviewError] = useState("");
 
@@ -49,6 +62,7 @@ function EditorPage() {
   const bindingRef = useRef(null);
   const userColorRef = useRef(randomColor());
   const userNameRef = useRef(userName);
+  const chatBottomRef = useRef(null);
 
   const decorationsRef = useRef(null);
   const injectedStylesRef = useRef(new Set());
@@ -64,21 +78,25 @@ function EditorPage() {
   }, [roomId, navigate]);
 
   useEffect(() => {
+    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, isChatSending]);
+
+  useEffect(() => {
     if (!roomId) return;
 
     let ydoc;
     let provider;
 
-function getWsUrl() {
-  let url = import.meta.env.VITE_WS_URL || import.meta.env.VITE_BACKEND_URL || "ws://localhost:1234";
-  url = url.trim().replace(/\/+$/, "");
-  if (typeof window !== "undefined" && window.location.protocol === "https:") {
-    url = url.replace(/^http:\/\//i, "wss://").replace(/^https:\/\//i, "wss://").replace(/^ws:\/\//i, "wss://");
-  } else {
-    url = url.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://");
-  }
-  return url;
-}
+    function getWsUrl() {
+      let url = import.meta.env.VITE_WS_URL || import.meta.env.VITE_BACKEND_URL || "ws://localhost:1234";
+      url = url.trim().replace(/\/+$/, "");
+      if (typeof window !== "undefined" && window.location.protocol === "https:") {
+        url = url.replace(/^http:\/\//i, "wss://").replace(/^https:\/\//i, "wss://").replace(/^ws:\/\//i, "wss://");
+      } else {
+        url = url.replace(/^http:\/\//i, "ws://").replace(/^https:\/\//i, "wss://");
+      }
+      return url;
+    }
 
     try {
       ydoc = new Y.Doc();
@@ -88,6 +106,21 @@ function getWsUrl() {
         roomId,
         ydoc
       );
+
+      // Yjs Room Metadata Sync (filename)
+      const metaMap = ydoc.getMap("room-metadata");
+      if (fileNameFromRoute && !metaMap.get("fileName")) {
+        metaMap.set("fileName", fileNameFromRoute);
+      } else if (metaMap.get("fileName")) {
+        setFileName(metaMap.get("fileName"));
+      }
+
+      metaMap.observe(() => {
+        const syncedFileName = metaMap.get("fileName");
+        if (syncedFileName) {
+          setFileName(syncedFileName);
+        }
+      });
 
       provider.on("status", ({ status }) => {
         setYjsStatus(status === "connected" ? "connected" : "connecting");
@@ -99,154 +132,136 @@ function getWsUrl() {
       });
 
       ydocRef.current = ydoc;
-      ytextRef.current = ytext;
       providerRef.current = provider;
+      ytextRef.current = ytext;
 
-      provider.awareness.on("change", () => updateRemoteCursorLabels());
-
-      if (editorRef.current) {
-        rebind(editorRef.current, ytext, provider);
-      }
-    } catch (err) {
-      console.error("Yjs setup failed:", err);
-      setYjsStatus("error");
-    }
-
-    return () => {
-      bindingRef.current?.destroy();
-      bindingRef.current = null;
-      decorationsRef.current?.clear();
-      decorationsRef.current = null;
-      provider?.awareness?.off("change", updateRemoteCursorLabels);
-      provider?.destroy();
-      ydoc?.destroy();
-      ydocRef.current = null;
-      ytextRef.current = null;
-      providerRef.current = null;
-    };
-  }, [roomId]);
-
-  useEffect(() => {
-    if (!editorRef.current || !monacoRef.current) return;
-    const model = editorRef.current.getModel();
-    if (model) {
-      monacoRef.current.editor.setModelLanguage(model, lan);
-    }
-  }, [lan]);
-
-  function rebind(editor, ytext, provider) {
-    try {
-      bindingRef.current?.destroy();
-      bindingRef.current = new MonacoBinding(
-        ytext,
-        editor.getModel(),
-        new Set([editor]),
-        provider.awareness
-      );
       provider.awareness.setLocalStateField("user", {
         name: userNameRef.current,
         color: userColorRef.current,
       });
 
-      decorationsRef.current = editor.createDecorationsCollection([]);
-      updateRemoteCursorLabels();
+      provider.awareness.on("change", () => {
+        if (!editorRef.current || !monacoRef.current) return;
+        renderRemoteCursors(
+          provider.awareness.getStates(),
+          editorRef.current,
+          monacoRef.current
+        );
+      });
     } catch (err) {
-      console.error("MonacoBinding failed:", err);
+      console.error("Yjs init error:", err);
+      setYjsStatus("error");
     }
-  }
 
-  function ensureStyleForClient(clientId, color) {
-    const key = `cr-cursor-style-${clientId}`;
-    if (injectedStylesRef.current.has(key)) return;
-    injectedStylesRef.current.add(key);
+    return () => {
+      bindingRef.current?.destroy();
+      provider?.destroy();
+      ydoc?.destroy();
+    };
+  }, [roomId]);
 
-    const styleEl = document.createElement("style");
-    styleEl.id = key;
-    styleEl.textContent = `
-      .cr-remote-cursor-${clientId} {
-        position: relative;
-        border-left: 2px solid ${color};
-      }
-      .cr-remote-cursor-${clientId}::before {
-        content: attr(data-cr-name);
-        position: absolute;
-        top: -18px;
-        left: -2px;
-        background: ${color};
-        color: #0d1117;
-        font-size: 11px;
-        font-weight: 600;
-        padding: 1px 6px;
-        border-radius: 3px;
-        white-space: nowrap;
-        font-family: 'JetBrains Mono', monospace;
-        pointer-events: none;
-        z-index: 50;
-      }
-    `;
-    document.head.appendChild(styleEl);
-  }
-
-  function updateRemoteCursorLabels() {
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    const provider = providerRef.current;
-    if (!editor || !monaco || !provider || !decorationsRef.current) return;
-
-    const localClientId = provider.awareness.clientID;
-    const states = provider.awareness.getStates();
-    const newDecorations = [];
-
-    states.forEach((state, clientId) => {
-      if (clientId === localClientId) return;
-      if (!state?.user || !state?.cursor) return;
-
-      const { color } = state.user;
-      const { lineNumber, column } = state.cursor;
-
-      if (!lineNumber || !column) return;
-
-      ensureStyleForClient(clientId, color);
-
-      newDecorations.push({
-        range: new monaco.Range(lineNumber, column, lineNumber, column),
-        options: {
-          className: `cr-remote-cursor-${clientId}`,
-          stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-        },
-      });
-    });
-
-    decorationsRef.current.set(newDecorations);
-
-    requestAnimationFrame(() => {
-      states.forEach((state, clientId) => {
-        if (clientId === localClientId) return;
-        if (!state?.user) return;
-        const els = document.querySelectorAll(`.cr-remote-cursor-${clientId}`);
-        els.forEach((el) => el.setAttribute("data-cr-name", state.user.name || "User"));
-      });
-    });
-  }
-
-  const handleMount = (editor, monaco) => {
+  function handleMount(editor, monaco) {
     editorRef.current = editor;
     monacoRef.current = monaco;
 
-    if (!ytextRef.current || !providerRef.current) return;
-    rebind(editor, ytextRef.current, providerRef.current);
+    if (ytextRef.current && providerRef.current) {
+      bindingRef.current = new MonacoBinding(
+        ytextRef.current,
+        editor.getModel(),
+        new Set([editor]),
+        providerRef.current.awareness
+      );
+    }
+  }
 
-    editor.onDidChangeCursorPosition((e) => {
-      providerRef.current?.awareness.setLocalStateField("cursor", {
-        lineNumber: e.position.lineNumber,
-        column: e.position.column,
+  function renderRemoteCursors(states, editor, monaco) {
+    const localClientID = providerRef.current?.awareness.clientID;
+    const newDecorations = [];
+
+    states.forEach((state, clientID) => {
+      if (clientID === localClientID) return;
+      if (!state.user || !state.cursor) return;
+
+      const { name, color } = state.user;
+      const { selectionHead, selectionAnchor } = state.cursor;
+      const className = `remote-cursor-${clientID}`;
+
+      if (!injectedStylesRef.current.has(className)) {
+        injectedStylesRef.current.add(className);
+        const style = document.createElement("style");
+        style.textContent = `
+          .${className} {
+            position: absolute;
+            background-color: ${color};
+            width: 2px !important;
+          }
+          .${className}::after {
+            content: "${name}";
+            position: absolute;
+            top: -18px;
+            left: 0;
+            background-color: ${color};
+            color: #000;
+            font-size: 10px;
+            font-weight: bold;
+            padding: 1px 4px;
+            border-radius: 2px;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 10;
+          }
+        `;
+        document.head.appendChild(style);
+      }
+
+      const model = editor.getModel();
+      if (!model) return;
+
+      const headPos = model.getPositionAt(selectionHead);
+      const anchorPos = model.getPositionAt(selectionAnchor);
+
+      newDecorations.push({
+        range: new monaco.Range(
+          Math.min(headPos.lineNumber, anchorPos.lineNumber),
+          Math.min(headPos.column, anchorPos.column),
+          Math.max(headPos.lineNumber, anchorPos.lineNumber),
+          Math.max(headPos.column, anchorPos.column)
+        ),
+        options: { className, stickiness: monaco.editor.TrackedRangeStickiness.NeverGrowsWithTyping },
       });
     });
-  };
 
-  function handleNameChange(newName) {
+    decorationsRef.current = editor.deltaDecorations(
+      decorationsRef.current || [],
+      newDecorations
+    );
+  }
+
+  function changeLanguage(newLang) {
+    setlan(newLang);
+    const newDefaultFile = DEFAULT_FILENAMES[newLang] || "file.txt";
+    handleFileNameChange(newDefaultFile);
+
+    if (editorRef.current && monacoRef.current) {
+      const model = editorRef.current.getModel();
+      if (model) {
+        monacoRef.current.editor.setModelLanguage(model, newLang);
+      }
+    }
+  }
+
+  function handleFileNameChange(newFileName) {
+    const trimmed = newFileName.trim();
+    if (!trimmed) return;
+    setFileName(trimmed);
+    if (ydocRef.current) {
+      const metaMap = ydocRef.current.getMap("room-metadata");
+      metaMap.set("fileName", trimmed);
+    }
+  }
+
+  function handleUserNameChange(newName) {
     setUserName(newName);
-    userNameRef.current = newName;
     localStorage.setItem("cr_username", newName);
     if (providerRef.current) {
       providerRef.current.awareness.setLocalStateField("user", {
@@ -325,7 +340,6 @@ function getWsUrl() {
     setIsReviewing(true);
     setShowReviewPanel(true);
     setReviewError("");
-    setAiReview("");
 
     try {
       const res = await fetch(
@@ -344,7 +358,7 @@ function getWsUrl() {
         return;
       }
 
-      setAiReview(data.review);
+      setChatMessages([{ id: Date.now(), role: "assistant", text: data.review }]);
     } catch (err) {
       setReviewError("Network error: " + err.message);
     } finally {
@@ -352,45 +366,86 @@ function getWsUrl() {
     }
   }
 
-  function saveFile(code, language) {
-    const extMap = { javascript: "js", python: "py", java: "java", cpp: "cpp", typescript: "ts" };
-    const ext = extMap[language] || "txt";
+  async function handleSendChat() {
+    if (!chatInput.trim() || isChatSending) return;
+    const userMsg = chatInput.trim();
+    setChatInput("");
+
+    const newMessages = [...chatMessages, { id: Date.now(), role: "user", text: userMsg }];
+    setChatMessages(newMessages);
+    setIsChatSending(true);
+
+    const code = editorRef.current ? editorRef.current.getValue() : "";
+
+    try {
+      const res = await fetch(
+        `${import.meta.env.VITE_BACKEND_URL || "http://localhost:1234"}/api/chat`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: newMessages, code, language: lan }),
+        }
+      );
+
+      const data = await res.json();
+      if (!res.ok) {
+        setChatMessages((prev) => [
+          ...prev,
+          { id: Date.now() + 1, role: "assistant", text: "Error: " + (data.error || "Failed to get AI reply.") },
+        ]);
+        return;
+      }
+
+      setChatMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, role: "assistant", text: data.reply },
+      ]);
+    } catch (err) {
+      setChatMessages((prev) => [
+        ...prev,
+        { id: Date.now() + 1, role: "assistant", text: "Network Error: " + err.message },
+      ]);
+    } finally {
+      setIsChatSending(false);
+    }
+  }
+
+  function saveFile(code) {
+    const downloadName = fileName || `code.${lan}`;
     const blob = new Blob([code], { type: "text/plain" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
-    a.download = `code.${ext}`;
+    a.download = downloadName;
     a.click();
     URL.revokeObjectURL(a.href);
   }
-
-  if (!roomId) return null;
 
   return (
     <div style={styles.appContainer}>
       <Navbar
         lan={lan}
-        setlan={setlan}
-        roomId={roomId}
-        userName={userName}
-        onNameChange={handleNameChange}
-        onSave={() => editorRef.current && saveFile(editorRef.current.getValue(), lan)}
+        setlan={changeLanguage}
+        fileName={fileName}
+        onFileNameChange={handleFileNameChange}
         onRun={runCode}
         isRunning={isRunning}
+        roomId={roomId}
+        userName={userName}
+        onNameChange={handleUserNameChange}
+        onSave={() => saveFile(editorRef.current?.getValue() || "")}
         onReview={reviewCode}
         isReviewing={isReviewing}
       />
 
-      {yjsStatus !== "connected" && (
-        <div
-          style={{
-            ...styles.statusBar,
-            backgroundColor: yjsStatus === "error" ? "#450a0a" : "#1c1917",
-            color: yjsStatus === "error" ? "#f87171" : "#a8a29e",
-          }}
-        >
-          {yjsStatus === "error"
-            ? "⚠ Sync connection failed — changes may not be shared"
-            : "⟳ Connecting to sync server..."}
+      {yjsStatus === "error" && (
+        <div style={{ ...styles.statusBar, backgroundColor: "#b91c1c", color: "#fef2f2" }}>
+          ⚠ Sync connection failed — changes may not be shared
+        </div>
+      )}
+
+      {yjsStatus === "connecting" && (
+        <div style={{ ...styles.statusBar, backgroundColor: "#1e3a8a", color: "#dbeafe" }}>
+          Connecting to room synchronization...
         </div>
       )}
 
@@ -401,7 +456,7 @@ function getWsUrl() {
             <Editor
               height="100%"
               defaultLanguage={languageFromRoute}
-              theme="vs-dark"
+              theme="hc-black"
               onMount={handleMount}
               options={{
                 fontSize: 14,
@@ -433,23 +488,57 @@ function getWsUrl() {
           )}
         </div>
 
+        {/* AI Assistant Chat Drawer */}
         {showReviewPanel && (
           <div style={styles.reviewPanel}>
             <div style={styles.reviewHeader}>
-              <span>✦ AI Code Review</span>
+              <span>✦ AI Assistant & Code Review</span>
               <button onClick={() => setShowReviewPanel(false)} style={styles.closeBtn}>✕</button>
             </div>
 
-            <div style={styles.reviewBody}>
-              {isReviewing && <div style={styles.reviewLoading}>Analyzing your code...</div>}
+            <div style={styles.chatBody}>
+              {isReviewing && <div style={styles.reviewLoading}>✦ Analyzing your code...</div>}
 
               {!isReviewing && reviewError && (
                 <div style={styles.reviewErrorText}>{reviewError}</div>
               )}
 
-              {!isReviewing && !reviewError && aiReview && (
-                <pre style={styles.reviewText}>{aiReview}</pre>
+              {!isReviewing && chatMessages.map((msg) => (
+                <div
+                  key={msg.id}
+                  style={msg.role === "user" ? styles.userBubbleContainer : styles.aiBubbleContainer}
+                >
+                  <div style={msg.role === "user" ? styles.userBubble : styles.aiBubble}>
+                    <div style={styles.bubbleRoleHeader}>
+                      {msg.role === "user" ? "You" : "✦ CodeRoom AI"}
+                    </div>
+                    <pre style={styles.bubbleText}>{msg.text}</pre>
+                  </div>
+                </div>
+              ))}
+
+              {isChatSending && (
+                <div style={styles.aiBubbleContainer}>
+                  <div style={styles.aiBubble}>
+                    <span style={styles.reviewLoading}>✦ Thinking...</span>
+                  </div>
+                </div>
               )}
+              <div ref={chatBottomRef} />
+            </div>
+
+            <div style={styles.chatInputContainer}>
+              <input
+                type="text"
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSendChat()}
+                placeholder="Ask follow-up question or request changes..."
+                style={styles.chatInput}
+              />
+              <button onClick={handleSendChat} disabled={isChatSending} style={styles.sendBtn}>
+                Send
+              </button>
             </div>
           </div>
         )}
@@ -463,8 +552,8 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     height: "100vh",
-    backgroundColor: "#0d1117",
-    color: "#e6edf3",
+    backgroundColor: "#000000",
+    color: "#ffffff",
     overflow: "hidden",
   },
   statusBar: {
@@ -478,7 +567,7 @@ const styles = {
     display: "flex",
     flexDirection: "row",
     overflow: "hidden",
-    borderTop: "1px solid #21262d",
+    borderTop: "1px solid #333333",
   },
   editorTerminalColumn: {
     flex: 1,
@@ -489,8 +578,8 @@ const styles = {
   outputPanelBottom: {
     height: "220px",
     maxHeight: "45%",
-    backgroundColor: "#161b22",
-    borderTop: "2px solid #21262d",
+    backgroundColor: "#0a0a0a",
+    borderTop: "2px solid #333333",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -500,16 +589,16 @@ const styles = {
     justifyContent: "space-between",
     alignItems: "center",
     padding: "8px 16px",
-    borderBottom: "1px solid #21262d",
+    borderBottom: "1px solid #333333",
     fontSize: "13px",
     fontWeight: 600,
-    color: "#8b949e",
-    backgroundColor: "#0d1117",
+    color: "#ffffff",
+    backgroundColor: "#000000",
   },
   closeBtn: {
     background: "none",
     border: "none",
-    color: "#8b949e",
+    color: "#ffffff",
     cursor: "pointer",
     fontSize: "14px",
   },
@@ -519,15 +608,15 @@ const styles = {
     margin: 0,
     fontSize: "13px",
     fontFamily: "'JetBrains Mono', monospace",
-    color: "#e6edf3",
+    color: "#ffffff",
     overflowY: "auto",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
   },
   reviewPanel: {
-    width: "38%",
-    backgroundColor: "#161b22",
-    borderLeft: "1px solid #21262d",
+    width: "40%",
+    backgroundColor: "#0a0a0a",
+    borderLeft: "2px solid #333333",
     display: "flex",
     flexDirection: "column",
     overflow: "hidden",
@@ -536,20 +625,23 @@ const styles = {
     display: "flex",
     justifyContent: "space-between",
     alignItems: "center",
-    padding: "8px 16px",
-    borderBottom: "1px solid #21262d",
-    fontSize: "13px",
-    fontWeight: 600,
-    color: "#a78bfa",
-    backgroundColor: "#0d1117",
+    padding: "12px 16px",
+    borderBottom: "1px solid #333333",
+    fontSize: "14px",
+    fontWeight: 700,
+    color: "#c084fc",
+    backgroundColor: "#000000",
   },
-  reviewBody: {
+  chatBody: {
     flex: 1,
     overflowY: "auto",
     padding: "16px",
+    display: "flex",
+    flexDirection: "column",
+    gap: "12px",
   },
   reviewLoading: {
-    color: "#8b949e",
+    color: "#a1a1aa",
     fontSize: "13px",
     fontFamily: "'JetBrains Mono', monospace",
   },
@@ -558,14 +650,68 @@ const styles = {
     fontSize: "13px",
     fontFamily: "'JetBrains Mono', monospace",
   },
-  reviewText: {
+  userBubbleContainer: {
+    display: "flex",
+    justifyContent: "flex-end",
+  },
+  aiBubbleContainer: {
+    display: "flex",
+    justifyContent: "flex-start",
+  },
+  userBubble: {
+    maxWidth: "85%",
+    backgroundColor: "#4f46e5",
+    color: "#ffffff",
+    borderRadius: "12px 12px 2px 12px",
+    padding: "10px 14px",
+  },
+  aiBubble: {
+    maxWidth: "88%",
+    backgroundColor: "#18181b",
+    border: "1px solid #3f3f46",
+    color: "#f4f4f5",
+    borderRadius: "12px 12px 12px 2px",
+    padding: "10px 14px",
+  },
+  bubbleRoleHeader: {
+    fontSize: "11px",
+    fontWeight: "bold",
+    marginBottom: "4px",
+    opacity: 0.8,
+  },
+  bubbleText: {
     margin: 0,
     fontSize: "13px",
     lineHeight: 1.6,
     fontFamily: "'JetBrains Mono', monospace",
-    color: "#e6edf3",
     whiteSpace: "pre-wrap",
     wordBreak: "break-word",
+  },
+  chatInputContainer: {
+    display: "flex",
+    gap: "8px",
+    padding: "12px",
+    borderTop: "1px solid #333333",
+    backgroundColor: "#000000",
+  },
+  chatInput: {
+    flex: 1,
+    backgroundColor: "#18181b",
+    border: "1px solid #3f3f46",
+    borderRadius: "6px",
+    color: "#ffffff",
+    padding: "8px 12px",
+    fontSize: "13px",
+    outline: "none",
+  },
+  sendBtn: {
+    backgroundColor: "#8b5cf6",
+    color: "#ffffff",
+    border: "none",
+    borderRadius: "6px",
+    padding: "8px 16px",
+    fontWeight: "bold",
+    cursor: "pointer",
   },
 };
 
